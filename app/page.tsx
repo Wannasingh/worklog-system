@@ -1,196 +1,190 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, Printer, Save } from "lucide-react";
-import { WorkLog } from "@/types/worklog";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { th } from "date-fns/locale";
+import { Clock, LogIn, LogOut } from "lucide-react";
 
-const WorkLogApp = () => {
-  const [logs, setLogs] = useState<WorkLog[]>([]);
-  const [newLog, setNewLog] = useState<Omit<WorkLog, "id">>({
-    date: new Date().toISOString().split("T")[0],
-    startTime: "",
-    endTime: "",
-    task: "",
-    description: "",
-  });
+interface TimeRecord {
+  id: string;
+  user_id: string;
+  check_in: string;
+  check_out: string | null;
+  created_at: string;
+}
 
-  // สำหรับเก็บข้อมูลใน Local Storage ก่อน (ในที่นี้ยังไม่ได้เชื่อมต่อ Supabase)
+export default function HomePage() { 
+  const { user } = useAuth();
+  const supabase = createClientComponentClient();
+  const [loading, setLoading] = useState(false);
+  const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
+  const [currentRecord, setCurrentRecord] = useState<TimeRecord | null>(null);
+
   useEffect(() => {
-    const savedLogs = localStorage.getItem("workLogs");
-    if (savedLogs) {
-      setLogs(JSON.parse(savedLogs));
+    if (user) {
+      loadTimeRecords();
     }
-  }, []);
+  }, [user]);
 
-  const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = e.target;
-    setNewLog((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  const loadTimeRecords = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("time_records")
+        .select("*")
+        .eq("user_id", user?.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+
+      setTimeRecords(data || []);
+      
+      // Find current active record (no check_out time)
+      const active = data?.find(record => !record.check_out);
+      setCurrentRecord(active || null);
+
+    } catch (error) {
+      console.error("Error loading time records:", error);
+      toast.error("ไม่สามารถโหลดข้อมูลการลงเวลาได้");
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const logEntry = {
-      id: Date.now(),
-      ...newLog,
-    };
+  const handleCheckIn = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("time_records")
+        .insert([
+          {
+            user_id: user?.id,
+            check_in: new Date().toISOString(),
+          },
+        ])
+        .select()
+        .single();
 
-    const updatedLogs = [...logs, logEntry];
-    setLogs(updatedLogs);
-    localStorage.setItem("workLogs", JSON.stringify(updatedLogs));
+      if (error) throw error;
 
-    // รีเซ็ตฟอร์ม แต่เก็บวันที่ปัจจุบันไว้
-    setNewLog({
-      date: new Date().toISOString().split("T")[0],
-      startTime: "",
-      endTime: "",
-      task: "",
-      description: "",
-    });
+      setCurrentRecord(data);
+      await loadTimeRecords();
+      toast.success("บันทึกเวลาเข้างานเรียบร้อยแล้ว");
+    } catch (error) {
+      console.error("Error checking in:", error);
+      toast.error("ไม่สามารถบันทึกเวลาเข้างานได้");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleCheckOut = async () => {
+    if (!currentRecord) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("time_records")
+        .update({
+          check_out: new Date().toISOString(),
+        })
+        .eq("id", currentRecord.id);
+
+      if (error) throw error;
+
+      setCurrentRecord(null);
+      await loadTimeRecords();
+      toast.success("บันทึกเวลาออกงานเรียบร้อยแล้ว");
+    } catch (error) {
+      console.error("Error checking out:", error);
+      toast.error("ไม่สามารถบันทึกเวลาออกงานได้");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>บันทึกการทำงาน</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="date">วันที่</Label>
-                <div className="relative">
-                  <Input
-                    id="date"
-                    name="date"
-                    type="date"
-                    value={newLog.date}
-                    onChange={handleInputChange}
-                    required
-                  />
-                  <Calendar className="absolute right-2 top-2 h-5 w-5 text-gray-400" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <Label htmlFor="startTime">เวลาเริ่ม</Label>
-                  <div className="relative">
-                    <Input
-                      id="startTime"
-                      name="startTime"
-                      type="time"
-                      value={newLog.startTime}
-                      onChange={handleInputChange}
-                      required
-                    />
-                    <Clock className="absolute right-2 top-2 h-5 w-5 text-gray-400" />
+    <div className="container mx-auto py-10">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              การลงเวลาวันนี้
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {currentRecord ? (
+                <>
+                  <div className="text-sm text-muted-foreground">
+                    เข้างานเมื่อ:{" "}
+                    {format(new Date(currentRecord.check_in), "HH:mm น.", {
+                      locale: th,
+                    })}
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="endTime">เวลาสิ้นสุด</Label>
-                  <div className="relative">
-                    <Input
-                      id="endTime"
-                      name="endTime"
-                      type="time"
-                      value={newLog.endTime}
-                      onChange={handleInputChange}
-                      required
-                    />
-                    <Clock className="absolute right-2 top-2 h-5 w-5 text-gray-400" />
-                  </div>
-                </div>
-              </div>
+                  <Button
+                    className="w-full"
+                    onClick={handleCheckOut}
+                    disabled={loading}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    {loading ? "กำลังบันทึก..." : "ลงเวลาออกงาน"}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  className="w-full"
+                  onClick={handleCheckIn}
+                  disabled={loading}
+                >
+                  <LogIn className="mr-2 h-4 w-4" />
+                  {loading ? "กำลังบันทึก..." : "ลงเวลาเข้างาน"}
+                </Button>
+              )}
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <Label htmlFor="task">งาน</Label>
-              <Input
-                id="task"
-                name="task"
-                value={newLog.task}
-                onChange={handleInputChange}
-                required
-                placeholder="ชื่องานหรือโปรเจค"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">รายละเอียด</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={newLog.description}
-                onChange={handleInputChange}
-                placeholder="รายละเอียดของงานที่ทำ"
-                rows={4}
-              />
-            </div>
-
-            <div className="flex justify-end space-x-2">
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                <Save className="w-4 h-4 mr-2" />
-                บันทึก
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card className="print:shadow-none">
-        <CardHeader className="flex flex-row items-center justify-between print:hidden">
-          <CardTitle>ประวัติการทำงาน</CardTitle>
-          <Button onClick={handlePrint} variant="outline">
-            <Printer className="w-4 h-4 mr-2" />
-            พิมพ์
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {logs.map((log) => (
-              <div key={log.id} className="border-b pb-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm mb-2">
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle>ประวัติการลงเวลาล่าสุด</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {timeRecords.map((record) => (
+                <div
+                  key={record.id}
+                  className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
+                >
                   <div>
-                    <span className="font-medium">วันที่:</span> {log.date}
+                    <div className="font-medium">
+                      {format(new Date(record.created_at), "EEEE d MMMM yyyy", {
+                        locale: th,
+                      })}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      เข้างาน: {format(new Date(record.check_in), "HH:mm น.")}
+                      {record.check_out &&
+                        ` - ออกงาน: ${format(
+                          new Date(record.check_out),
+                          "HH:mm น."
+                        )}`}
+                    </div>
                   </div>
-                  <div>
-                    <span className="font-medium">เวลา:</span> {log.startTime} -{" "}
-                    {log.endTime}
-                  </div>
-                  <div className="col-span-2">
-                    <span className="font-medium">งาน:</span> {log.task}
-                  </div>
+                  {!record.check_out && (
+                    <div className="text-sm text-green-600 font-medium">
+                      กำลังทำงาน
+                    </div>
+                  )}
                 </div>
-                {log.description && (
-                  <div className="text-sm mt-2">
-                    <span className="font-medium">รายละเอียด:</span>
-                    <p className="mt-1 whitespace-pre-wrap">
-                      {log.description}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
-};
-
-export default WorkLogApp;
+}
