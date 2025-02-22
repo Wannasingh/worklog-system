@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import ReactCrop, { Crop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -14,11 +14,22 @@ import { User, Upload, Briefcase } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast, Toaster } from "sonner";
 import { ChevronLeft } from "lucide-react";
-import { useRouter } from "next/navigation"; 
+import { useRouter } from "next/navigation";
+import { useProfileData } from "@/hooks/useProfileData";
+import Image from "next/image";
 
 export default function ProfilePage() {
-  const router = useRouter(); // Add this
+  const router = useRouter();
   const { user, setIsProfileUpdating } = useAuth();
+  const {
+    profile,
+    setProfile,
+    avatarLoading,
+    setAvatarLoading,
+    avatarError,
+    setAvatarError,
+  } = useProfileData(user?.id, user?.user_metadata || null);
+
   const supabase = createClientComponentClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -34,106 +45,7 @@ export default function ProfilePage() {
 
   const [tempImage, setTempImage] = useState<string | null>(null);
   const [showCropDialog, setShowCropDialog] = useState(false);
-  const [avatarLoading, setAvatarLoading] = useState(true);
-  const [avatarError, setAvatarError] = useState(false);
 
-  interface ProfileData {
-    avatar_url: string | null;
-    username: string | null;
-    first_name: string | null;
-    last_name: string | null;
-    position: string | null;
-    department: string | null;
-    employee_id: string | null;
-    title_prefix: string | null;
-  }
-
-  useEffect(() => {
-    async function loadProfile() {
-      const maxRetries = 3;
-      let retryCount = 0;
-
-      while (retryCount < maxRetries) {
-        try {
-          // Add initial delay to prevent immediate retry
-          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
-
-          const { data, error } = await supabase
-            .from("profiles")
-            .select(
-              "avatar_url, username, first_name, last_name, position, department, employee_id, title_prefix"
-            )
-            .eq("id", user?.id)
-            .single();
-
-          if (error) {
-            if (error.message.includes("insufficient resources")) {
-              retryCount++;
-              if (retryCount === maxRetries) throw error;
-              continue;
-            }
-            throw error;
-          }
-
-          if (data) {
-            handleProfileData(data);
-            return; // Success, exit the retry loop
-          }
-        } catch (error) {
-          if (retryCount === maxRetries - 1) {
-            console.error("Error loading profile:", error);
-            setAvatarLoading(false);
-            toast.error("ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ กรุณาลองใหม่อีกครั้ง");
-            return;
-          }
-          retryCount++;
-        }
-      }
-    }
-
-    function handleProfileData(profileData: ProfileData) {
-      setProfile({
-        username: user?.user_metadata?.username || "",
-        avatar_url: profileData.avatar_url || "",
-        position: profileData.position || "",
-        department: profileData.department || "",
-        employee_id: profileData.employee_id || "",
-        title_prefix: profileData.title_prefix || "",
-        first_name: profileData.first_name || "",
-        last_name: profileData.last_name || "",
-      });
-
-      if (profileData.avatar_url) {
-        const img = new Image();
-        img.src = profileData.avatar_url;
-        img.onload = () => setAvatarLoading(false);
-        img.onerror = () => {
-          setAvatarLoading(false);
-          setAvatarError(true);
-        };
-      } else {
-        setAvatarLoading(false);
-      }
-    }
-
-    if (user?.id) {
-      loadProfile();
-    }
-  }, [user?.id, user?.user_metadata?.username, supabase]);
-
-  // Update profile state
-  const [profile, setProfile] = useState({
-    username: user?.user_metadata?.username || "",
-    avatar_url: user?.user_metadata?.avatar_url || "",
-    position: user?.user_metadata?.position || "",
-    department: user?.user_metadata?.department || "",
-    employee_id: user?.user_metadata?.employee_id || "",
-    title_prefix: user?.user_metadata?.title_prefix || "",
-    first_name: user?.user_metadata?.first_name || "",
-    last_name: user?.user_metadata?.last_name || "",
-  });
-
-  // Update handleSubmit function
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -488,11 +400,14 @@ export default function ProfilePage() {
                   aspect={1}
                   className="max-w-full mx-auto rounded-md overflow-hidden"
                 >
-                  <img
+                  <Image
                     ref={imgRef}
                     src={tempImage}
                     alt="Crop preview"
+                    width={400}
+                    height={400}
                     className="max-w-full"
+                    unoptimized // Add this since we're working with local blob data
                     onLoad={(e) => {
                       const img = e.currentTarget;
                       const size = Math.min(img.width, img.height, 400);
