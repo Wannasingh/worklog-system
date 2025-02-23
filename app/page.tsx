@@ -1,13 +1,13 @@
 "use client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { format } from "date-fns";
-import { th } from "date-fns/locale";
-import { Clock, LogIn, LogOut } from "lucide-react";
+import { TimeRecordCard } from "@/components/time/TimeRecordCard";
+import { TimeHistoryCard } from "@/components/time/TimeHistoryCard";
+import { CompanyInfoCard } from "@/components/time/CompanyInfoCard";
+import { UserInfoCard } from "@/components/time/UserInfoCard";
+
 
 interface TimeRecord {
   id: string;
@@ -17,25 +17,28 @@ interface TimeRecord {
   created_at: string;
 }
 
-export default function HomePage() { 
+// Add company location configuration
+const COMPANY_LOCATION = {
+  latitude: 13.7563, // Replace with your company's actual latitude
+  longitude: 100.5018, // Replace with your company's actual longitude
+  radius: 100, // Radius in meters
+};
+
+export default function HomePage() {
   const { user } = useAuth();
   const supabase = createClientComponentClient();
   const [loading, setLoading] = useState(false);
   const [timeRecords, setTimeRecords] = useState<TimeRecord[]>([]);
   const [currentRecord, setCurrentRecord] = useState<TimeRecord | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      loadTimeRecords();
-    }
-  }, [user]);
-
   const loadTimeRecords = async () => {
+    if (!user) return;
+    
     try {
       const { data, error } = await supabase
         .from("time_records")
         .select("*")
-        .eq("user_id", user?.id)
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(5);
 
@@ -53,15 +56,24 @@ export default function HomePage() {
     }
   };
 
+  useEffect(() => {
+    loadTimeRecords();
+  }, [user, supabase]); // Add dependencies
+
   const handleCheckIn = async () => {
     setLoading(true);
     try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject);
+      });
+
       const { data, error } = await supabase
         .from("time_records")
         .insert([
           {
             user_id: user?.id,
             check_in: new Date().toISOString(),
+            check_in_location: `(${position.coords.latitude},${position.coords.longitude})`,
           },
         ])
         .select()
@@ -85,10 +97,15 @@ export default function HomePage() {
 
     setLoading(true);
     try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject);
+      });
+
       const { error } = await supabase
         .from("time_records")
         .update({
           check_out: new Date().toISOString(),
+          check_out_location: `(${position.coords.latitude},${position.coords.longitude})`,
         })
         .eq("id", currentRecord.id);
 
@@ -107,83 +124,19 @@ export default function HomePage() {
 
   return (
     <div className="container mx-auto py-10">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              การลงเวลาวันนี้
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {currentRecord ? (
-                <>
-                  <div className="text-sm text-muted-foreground">
-                    เข้างานเมื่อ:{" "}
-                    {format(new Date(currentRecord.check_in), "HH:mm น.", {
-                      locale: th,
-                    })}
-                  </div>
-                  <Button
-                    className="w-full"
-                    onClick={handleCheckOut}
-                    disabled={loading}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    {loading ? "กำลังบันทึก..." : "ลงเวลาออกงาน"}
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  className="w-full"
-                  onClick={handleCheckIn}
-                  disabled={loading}
-                >
-                  <LogIn className="mr-2 h-4 w-4" />
-                  {loading ? "กำลังบันทึก..." : "ลงเวลาเข้างาน"}
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>ประวัติการลงเวลาล่าสุด</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {timeRecords.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0"
-                >
-                  <div>
-                    <div className="font-medium">
-                      {format(new Date(record.created_at), "EEEE d MMMM yyyy", {
-                        locale: th,
-                      })}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      เข้างาน: {format(new Date(record.check_in), "HH:mm น.")}
-                      {record.check_out &&
-                        ` - ออกงาน: ${format(
-                          new Date(record.check_out),
-                          "HH:mm น."
-                        )}`}
-                    </div>
-                  </div>
-                  {!record.check_out && (
-                    <div className="text-sm text-green-600 font-medium">
-                      กำลังทำงาน
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-6">
+        <UserInfoCard user={user} />
+        <CompanyInfoCard user={user} />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <TimeRecordCard
+            currentRecord={currentRecord}
+            loading={loading}
+            onCheckIn={handleCheckIn}
+            onCheckOut={handleCheckOut}
+            companyLocation={COMPANY_LOCATION}
+          />
+          <TimeHistoryCard timeRecords={timeRecords} />
+        </div>
       </div>
     </div>
   );
