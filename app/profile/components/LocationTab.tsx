@@ -42,17 +42,36 @@ export function LocationTab({
   };
 
   const getCurrentLocation = async () => {
-    try {
-      const position = await new Promise<GeolocationPosition>(
-        (resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0,
-          });
-        }
-      );
+    const maxRetries = 3;
+    let retryCount = 0;
 
+    const tryGetLocation = async (): Promise<GeolocationPosition> => {
+      try {
+        return await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(
+            resolve,
+            reject,
+            {
+              enableHighAccuracy: true,
+              timeout: 10000, // Increased timeout to 10 seconds
+              maximumAge: 0,
+            }
+          );
+        });
+      } catch (error) {
+        if (error instanceof GeolocationPositionError) {
+          if (error.code === error.TIMEOUT && retryCount < maxRetries) {
+            retryCount++;
+            toast.info(`กำลังค้นหาตำแหน่ง... (${retryCount}/${maxRetries})`);
+            return tryGetLocation(); // Retry
+          }
+        }
+        throw error;
+      }
+    };
+
+    try {
+      const position = await tryGetLocation();
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
 
@@ -60,7 +79,23 @@ export function LocationTab({
       toast.success("ระบุพิกัดปัจจุบันเรียบร้อยแล้ว");
     } catch (error) {
       console.error("Error getting current location:", error);
-      toast.error("ไม่สามารถระบุตำแหน่งได้ กรุณาเปิดการใช้งาน GPS");
+      if (error instanceof GeolocationPositionError) {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            toast.error("ไม่ได้รับอนุญาตให้ใช้งาน GPS กรุณาเปิดการใช้งานในการตั้งค่า");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            toast.error("ไม่สามารถระบุตำแหน่งได้ กรุณาตรวจสอบการเชื่อมต่อ GPS");
+            break;
+          case error.TIMEOUT:
+            toast.error("หมดเวลาในการระบุตำแหน่ง กรุณาตรวจสอบการเชื่อมต่อ GPS และลองใหม่อีกครั้ง");
+            break;
+          default:
+            toast.error("ไม่สามารถระบุตำแหน่งได้ กรุณาลองใหม่อีกครั้ง");
+        }
+      } else {
+        toast.error("ไม่สามารถระบุตำแหน่งได้ กรุณาเปิดการใช้งาน GPS");
+      }
     }
   };
 

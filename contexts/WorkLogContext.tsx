@@ -2,6 +2,7 @@
 import { createContext, useContext } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useAuth } from "./AuthContext";
+import { toast } from "sonner";
 
 interface WorkLog {
   id: string;
@@ -24,24 +25,40 @@ export function WorkLogProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
   const createWorkLog = async (workLog: Omit<WorkLog, "id">) => {
-    if (!user) throw new Error("User not authenticated");
-    
-    await supabase.from("work_logs").insert({
-      ...workLog,
-      user_id: user.id,
-    });
+    try {
+      if (!user) throw new Error("User not authenticated");
+      
+      const { error } = await supabase.from("work_logs").insert({
+        ...workLog,
+        user_id: user.id,
+      });
+
+      if (error) throw error;
+      toast.success("Work log created successfully");
+    } catch (error) {
+      console.error("Error creating work log:", error);
+      toast.error("Failed to create work log");
+      throw error;
+    }
   };
 
   const getWorkLogs = async () => {
-    if (!user) throw new Error("User not authenticated");
+    try {
+      if (!user) throw new Error("User not authenticated");
 
-    const { data, error } = await supabase
-      .from("work_logs")
-      .select("*")
-      .order("date", { ascending: false });
+      const { data, error } = await supabase
+        .from("work_logs")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("date", { ascending: false });
 
-    if (error) throw error;
-    return data;
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error("Error fetching work logs:", error);
+      toast.error("Failed to fetch work logs");
+      return [];
+    }
   };
 
   return (

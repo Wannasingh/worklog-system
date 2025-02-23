@@ -44,21 +44,35 @@ export function Navbar() {
     setMounted(true);
   }, []);
 
-  async function getProfile() {
-    if (!user?.id) return;
+  useEffect(() => {
+    async function getProfile() {
+      if (!user?.id) return;
 
-    const { data } = await supabase
-      .from("profiles")
-      .select("username, avatar_url, first_name, last_name")
-      .eq("id", user.id)
-      .single();
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("username, avatar_url, first_name, last_name")
+          .eq("id", user.id)
+          .single();
 
-    if (data) {
-      setProfile(data);
+        if (error) {
+          console.error("Error fetching profile:", error);
+          return;
+        }
+
+        if (data) {
+          setProfile(data);
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
     }
-  }
 
-  getProfile();
+    if (user?.id) {
+      getProfile();
+    }
+  }, [user?.id, supabase]);
+
   if (!mounted) {
     return null;
   }

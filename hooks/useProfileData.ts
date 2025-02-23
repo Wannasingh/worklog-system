@@ -2,23 +2,6 @@ import { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { toast } from "sonner";
 
-interface ProfileData {
-  avatar_url: string | null;
-  username: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  position: string | null;
-  department: string | null;
-  employee_id: string | null;
-  title_prefix: string | null;
-  work_location: string | null;
-  work_latitude: number | null;
-  work_longitude: number | null;
-  work_radius: number | null;
-  company_name: string | null;
-  work_start_time: string | null;
-  work_end_time: string | null;
-}
 
 export interface Profile {
   id: string;
@@ -52,57 +35,95 @@ interface UserMetadata {
   last_name?: string;
 }
 
-export function useProfileData(
-  userId: string | undefined,
-  userMetadata: UserMetadata | null
-) {
-  const supabase = createClientComponentClient();
-  const [profile, setProfile] = useState<Profile>({
-    id: userId || "",
-    username: userMetadata?.username || "",
-    avatar_url: userMetadata?.avatar_url || "",
-    position: userMetadata?.position || "",
-    department: userMetadata?.department || "",
-    employee_id: userMetadata?.employee_id || "",
-    title_prefix: userMetadata?.title_prefix || "",
-    first_name: userMetadata?.first_name || "",
-    last_name: userMetadata?.last_name || "",
-    work_location: "",
-    work_latitude: undefined,
-    work_longitude: undefined,
-    work_radius: 100,
-    company_name: "", // เพิ่ม initial state
-    updated_at: new Date().toISOString(),
+// Remove unused UserMetadata interface
+export function useProfileData(userId: string, userMetadata: UserMetadata | null) {
+  const [profile, setProfile] = useState<Profile>(() => {
+    // Only access sessionStorage on the client side
+    if (typeof window !== 'undefined') {
+      const cachedProfile = sessionStorage.getItem(`profile_${userId}`);
+      if (cachedProfile) {
+        return JSON.parse(cachedProfile);
+      }
+    }
+    return {
+      id: userId,
+      username: userMetadata?.username || "",
+      avatar_url: userMetadata?.avatar_url || "",
+      position: userMetadata?.position || "",
+      department: userMetadata?.department || "",
+      employee_id: userMetadata?.employee_id || "",
+      title_prefix: userMetadata?.title_prefix || "",
+      first_name: userMetadata?.first_name || "",
+      last_name: userMetadata?.last_name || "",
+      work_location: "",
+      work_latitude: undefined,
+      work_longitude: undefined,
+      work_radius: 100,
+      company_name: "",
+      updated_at: new Date().toISOString(),
+    };
   });
 
-  const [avatarLoading, setAvatarLoading] = useState(true);
+  const [avatarLoading, setAvatarLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     let isSubscribed = true;
+    const supabase = createClientComponentClient();
 
     async function loadProfile() {
-      if (!userId) return;
+      if (!userId) {
+        setIsLoading(false);
+        return;
+      }
 
       try {
-        const { data, error } = await supabase
+        setIsLoading(true);
+        setError(null);
+        
+        const { data, error: supabaseError } = await supabase
           .from("profiles")
-          .select(
-            "avatar_url, username, first_name, last_name, position, department, employee_id, title_prefix, work_location, work_latitude, work_longitude, work_radius, company_name, work_start_time, work_end_time"
-          )
+          .select("*")
           .eq("id", userId)
           .single();
 
-        if (error) throw error;
+        if (supabaseError) throw supabaseError;
 
         if (data && isSubscribed) {
-          handleProfileData(data);
+          const newProfile: Profile = {
+            id: userId,
+            username: data.username || userMetadata?.username || "",
+            avatar_url: data.avatar_url || userMetadata?.avatar_url || "",
+            position: data.position || userMetadata?.position || "",
+            department: data.department || userMetadata?.department || "",
+            employee_id: data.employee_id || userMetadata?.employee_id || "",
+            title_prefix: data.title_prefix || userMetadata?.title_prefix || "",
+            first_name: data.first_name || userMetadata?.first_name || "",
+            last_name: data.last_name || userMetadata?.last_name || "",
+            work_location: data.work_location || "",
+            work_latitude: data.work_latitude || undefined,
+            work_longitude: data.work_longitude || undefined,
+            work_radius: data.work_radius || 100,
+            company_name: data.company_name || "",
+            work_start_time: data.work_start_time || "09:00",
+            work_end_time: data.work_end_time || "18:00",
+            updated_at: new Date().toISOString(),
+          };
+
+          setProfile(newProfile);
+          sessionStorage.setItem(`profile_${userId}`, JSON.stringify(newProfile));
         }
-      } catch (error) {
-        console.error("Error loading profile:", error);
+      } catch (err) {
+        console.error("Error loading profile:", err);
         if (isSubscribed) {
-          setAvatarLoading(false);
+          setError(err instanceof Error ? err : new Error('Failed to load profile'));
           toast.error("ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ กรุณาลองใหม่อีกครั้ง");
+        }
+      } finally {
+        if (isSubscribed) {
+          setIsLoading(false);
         }
       }
     }
@@ -112,41 +133,7 @@ export function useProfileData(
     return () => {
       isSubscribed = false;
     };
-  }, [userId, supabase]);
-
-  function handleProfileData(profileData: ProfileData) {
-    setProfile((prev) => ({
-      ...prev,
-      username: userMetadata?.username || "",
-      avatar_url: profileData.avatar_url || "",
-      position: profileData.position || "",
-      department: profileData.department || "",
-      employee_id: profileData.employee_id || "",
-      title_prefix: profileData.title_prefix || "",
-      first_name: profileData.first_name || "",
-      last_name: profileData.last_name || "",
-      work_location: profileData.work_location || "",
-      work_latitude: profileData.work_latitude || undefined,
-      work_longitude: profileData.work_longitude || undefined,
-      work_radius: profileData.work_radius || 100,
-      company_name: profileData.company_name || "",
-      work_start_time: profileData.work_start_time || "09:00",
-      work_end_time: profileData.work_end_time || "18:00",
-      updated_at: new Date().toISOString(),
-    }));
-
-    if (profileData.avatar_url) {
-      const img = new Image();
-      img.src = profileData.avatar_url;
-      img.onload = () => setAvatarLoading(false);
-      img.onerror = () => {
-        setAvatarLoading(false);
-        setAvatarError(true);
-      };
-    } else {
-      setAvatarLoading(false);
-    }
-  }
+  }, [userId, userMetadata]);
 
   return {
     profile,
@@ -155,5 +142,7 @@ export function useProfileData(
     setAvatarLoading,
     avatarError,
     setAvatarError,
+    isLoading,
+    error
   };
 }
