@@ -18,11 +18,13 @@ import { ImageCropDialog } from "./components/ImageCropDialog";
 import { Toaster } from "sonner";
 import { Crop } from "react-image-crop";
 
+const libraries: ("places")[] = ["places"];
+
 export default function ProfilePage() {
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-    libraries: ["places"],
+    libraries
   });
   const router = useRouter();
   const { user, setIsProfileUpdating } = useAuth();
@@ -62,6 +64,8 @@ export default function ProfilePage() {
           work_latitude: profile.work_latitude,
           work_longitude: profile.work_longitude,
           work_radius: profile.work_radius,
+          work_start_time: profile.work_start_time,
+          work_end_time: profile.work_end_time,
           updated_at: new Date().toISOString(),
         })
         .eq("id", user?.id);

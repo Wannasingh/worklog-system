@@ -16,6 +16,8 @@ interface ProfileData {
   work_longitude: number | null;
   work_radius: number | null;
   company_name: string | null;
+  work_start_time: string | null;
+  work_end_time: string | null;
 }
 
 export interface Profile {
@@ -35,6 +37,8 @@ export interface Profile {
   updated_at?: string;
   email?: string;
   company_name?: string;
+  work_start_time?: string;
+  work_end_time?: string;
 }
 
 interface UserMetadata {
@@ -75,85 +79,74 @@ export function useProfileData(
   const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
+    let isSubscribed = true;
+
     async function loadProfile() {
-      const maxRetries = 3;
-      let retryCount = 0;
+      if (!userId) return;
 
-      while (retryCount < maxRetries) {
-        try {
-          await new Promise((resolve) =>
-            setTimeout(resolve, Math.pow(2, retryCount) * 1000)
-          );
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select(
+            "avatar_url, username, first_name, last_name, position, department, employee_id, title_prefix, work_location, work_latitude, work_longitude, work_radius, company_name, work_start_time, work_end_time"
+          )
+          .eq("id", userId)
+          .single();
 
-          const { data, error } = await supabase
-            .from("profiles")
-            .select(
-              "avatar_url, username, first_name, last_name, position, department, employee_id, title_prefix, work_location, work_latitude, work_longitude, work_radius, company_name" // เพิ่ม fields ที่ต้องการ select
-            )
-            .eq("id", userId)
-            .single();
+        if (error) throw error;
 
-          if (error) {
-            if (error.message.includes("insufficient resources")) {
-              retryCount++;
-              if (retryCount === maxRetries) throw error;
-              continue;
-            }
-            throw error;
-          }
-
-          if (data) {
-            handleProfileData(data);
-            return;
-          }
-        } catch (error) {
-          if (retryCount === maxRetries - 1) {
-            console.error("Error loading profile:", error);
-            setAvatarLoading(false);
-            toast.error("ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ กรุณาลองใหม่อีกครั้ง");
-            return;
-          }
-          retryCount++;
+        if (data && isSubscribed) {
+          handleProfileData(data);
+        }
+      } catch (error) {
+        console.error("Error loading profile:", error);
+        if (isSubscribed) {
+          setAvatarLoading(false);
+          toast.error("ไม่สามารถโหลดข้อมูลโปรไฟล์ได้ กรุณาลองใหม่อีกครั้ง");
         }
       }
     }
 
-    function handleProfileData(profileData: ProfileData) {
-      setProfile((prev) => ({
-        ...prev,
-        username: userMetadata?.username || "",
-        avatar_url: profileData.avatar_url || "",
-        position: profileData.position || "",
-        department: profileData.department || "",
-        employee_id: profileData.employee_id || "",
-        title_prefix: profileData.title_prefix || "",
-        first_name: profileData.first_name || "",
-        last_name: profileData.last_name || "",
-        work_location: profileData.work_location || "",
-        work_latitude: profileData.work_latitude || undefined,
-        work_longitude: profileData.work_longitude || undefined,
-        work_radius: profileData.work_radius || 100,
-        company_name: profileData.company_name || "",
-        updated_at: new Date().toISOString(),
-      }));
+    loadProfile();
 
-      if (profileData.avatar_url) {
-        const img = new Image();
-        img.src = profileData.avatar_url;
-        img.onload = () => setAvatarLoading(false);
-        img.onerror = () => {
-          setAvatarLoading(false);
-          setAvatarError(true);
-        };
-      } else {
+    return () => {
+      isSubscribed = false;
+    };
+  }, [userId, supabase]);
+
+  function handleProfileData(profileData: ProfileData) {
+    setProfile((prev) => ({
+      ...prev,
+      username: userMetadata?.username || "",
+      avatar_url: profileData.avatar_url || "",
+      position: profileData.position || "",
+      department: profileData.department || "",
+      employee_id: profileData.employee_id || "",
+      title_prefix: profileData.title_prefix || "",
+      first_name: profileData.first_name || "",
+      last_name: profileData.last_name || "",
+      work_location: profileData.work_location || "",
+      work_latitude: profileData.work_latitude || undefined,
+      work_longitude: profileData.work_longitude || undefined,
+      work_radius: profileData.work_radius || 100,
+      company_name: profileData.company_name || "",
+      work_start_time: profileData.work_start_time || "09:00",
+      work_end_time: profileData.work_end_time || "18:00",
+      updated_at: new Date().toISOString(),
+    }));
+
+    if (profileData.avatar_url) {
+      const img = new Image();
+      img.src = profileData.avatar_url;
+      img.onload = () => setAvatarLoading(false);
+      img.onerror = () => {
         setAvatarLoading(false);
-      }
+        setAvatarError(true);
+      };
+    } else {
+      setAvatarLoading(false);
     }
-
-    if (userId) {
-      loadProfile();
-    }
-  }, [userId, userMetadata, supabase]);
+  }
 
   return {
     profile,

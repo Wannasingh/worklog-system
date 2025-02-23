@@ -82,7 +82,7 @@ export function WorkInfoTab({
             onChange={handleInputChange}
             placeholder="EMP001"
             required
-            pattern="^[A-Za-z0-9-]+$"
+            pattern="[A-Za-z0-9\-]+"
             title="รหัสพนักงานต้องเป็นตัวอักษรภาษาอังกฤษหรือตัวเลขเท่านั้น"
           />
         </div>
@@ -108,16 +108,39 @@ export function WorkInfoTab({
             required
           />
         </div>
+      
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="work_start_time">เวลาเข้างาน</Label>
+          <Input
+            id="work_start_time"
+            type="time"
+            value={profile.work_start_time || "09:00"}
+            onChange={handleInputChange}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="work_end_time">เวลาเลิกงาน</Label>
+          <Input
+            id="work_end_time"
+            type="time"
+            value={profile.work_end_time || "18:00"}
+            onChange={handleInputChange}
+            required
+          />
+        </div>
+      </div>
 
-        <Button
-          type="submit"
-          disabled={loading}
-          className="w-full"
-          aria-busy={loading}
-        >
-          {loading ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
-        </Button>
-      </form>
+      <Button
+        type="submit"
+        disabled={loading}
+        className="w-full"
+        aria-busy={loading}
+      >
+        {loading ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
+      </Button>
+    </form>
     </>
   );
 }
